@@ -17,8 +17,7 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
-
+      # Le SDK Android est préinstallé sur les machines ubuntu-latest (ANDROID_HOME).
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Tests unitaires (module core)
