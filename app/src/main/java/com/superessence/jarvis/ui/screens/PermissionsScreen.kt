@@ -39,7 +39,7 @@ import com.superessence.jarvis.util.Perms
 fun PermissionsScreen(activity: MainActivity, app: JarvisApp, onBack: () -> Unit) {
     val tick by activity.resumeTick
     val refresh = remember { mutableIntStateOf(0) }
-    @Suppress("UNUSED_EXPRESSION") tick; refresh.intValue
+    remember(tick, refresh.intValue) { 0 } // relit les autorisations au retour dans l'appli
     val req = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         refresh.intValue++
         if (!granted) Perms.openAppSettings(activity) // refus définitif : on ouvre les réglages
@@ -95,7 +95,7 @@ private fun addTile(ctx: Context) {
 @Composable
 fun DiagnosticsScreen(activity: MainActivity, app: JarvisApp, onBack: () -> Unit) {
     val tick by activity.resumeTick
-    @Suppress("UNUSED_EXPRESSION") tick
+    remember(tick) { 0 } // relit les autorisations au retour dans l'appli
     val ctx = LocalContext.current
     val running by JarvisService.running.collectAsState()
     val providers by app.settings.providers.collectAsState()

@@ -24,7 +24,7 @@ jobs:
         run: ./gradlew :core:test --stacktrace
 
       - name: Compilation APK debug
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest --stacktrace
 
       - name: Lint Android
         run: ./gradlew :app:lintDebug

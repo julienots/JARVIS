@@ -67,7 +67,7 @@ fun HomeScreen(activity: MainActivity, app: JarvisApp, openSettings: (String) ->
     val providers by app.settings.providers.collectAsState()
     val tick by activity.resumeTick
     var refresh = remember { mutableIntStateOf(0) }
-    @Suppress("UNUSED_EXPRESSION") tick; refresh.intValue
+    remember(tick, refresh.intValue) { 0 } // relit les autorisations au retour dans l'appli
 
     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         refresh.intValue++

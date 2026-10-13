@@ -391,7 +391,7 @@ fun ActionLogScreen(app: JarvisApp, onBack: () -> Unit) {
 @Composable
 fun BatteryScreen(activity: MainActivity, app: JarvisApp, onBack: () -> Unit) {
     val tick by activity.resumeTick
-    @Suppress("UNUSED_EXPRESSION") tick
+    remember(tick) { 0 } // relit les autorisations au retour dans l'appli
     val s by app.settings.flow.collectAsState()
     ScrollScreen("Batterie et arrière-plan", onBack) {
         Section("Fonctionnement en arrière-plan") {

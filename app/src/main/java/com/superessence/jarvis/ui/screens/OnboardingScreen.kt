@@ -48,7 +48,7 @@ fun OnboardingScreen(activity: MainActivity, app: JarvisApp) {
     var page by rememberSaveable { mutableIntStateOf(0) }
     val tick by activity.resumeTick
     var refresh by remember { mutableIntStateOf(0) }
-    @Suppress("UNUSED_EXPRESSION") tick; refresh
+    remember(tick, refresh) { 0 } // relit les autorisations au retour dans l'appli
     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ ; if (it) page++ }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++; page++ }
     var consent by rememberSaveable { mutableStateOf(false) }
