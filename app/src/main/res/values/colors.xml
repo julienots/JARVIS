@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="jarvis_bg">#FF02060C</color>
+    <color name="jarvis_cyan">#FF22E4FF</color>
+    <color name="launcher_bg">#FF02060C</color>
+</resources>

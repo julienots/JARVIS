@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Jarvis</string>
+    <string name="tile_label">Jarvis</string>
+    <string name="shortcut_talk_short">Parler</string>
+    <string name="shortcut_talk_long">Parler à Jarvis</string>
+    <string name="shortcut_overlay_short">Bulle</string>
+    <string name="shortcut_overlay_long">Afficher la bulle Jarvis</string>
+</resources>

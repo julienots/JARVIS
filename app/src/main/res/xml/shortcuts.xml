@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="talk"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_talk_short"
+        android:shortcutLongLabel="@string/shortcut_talk_long">
+        <intent
+            android:action="com.superessence.jarvis.action.TALK"
+            android:targetPackage="com.superessence.jarvis"
+            android:targetClass="com.superessence.jarvis.ui.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="overlay"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_overlay_short"
+        android:shortcutLongLabel="@string/shortcut_overlay_long">
+        <intent
+            android:action="com.superessence.jarvis.action.OVERLAY"
+            android:targetPackage="com.superessence.jarvis"
+            android:targetClass="com.superessence.jarvis.ui.MainActivity" />
+    </shortcut>
+</shortcuts>
