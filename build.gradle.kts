@@ -1,6 +1,2 @@
-// Plugins Kotlin chargés une seule fois pour tous les modules (versions dans settings.gradle.kts).
-plugins {
-    id("org.jetbrains.kotlin.jvm") apply false
-    id("org.jetbrains.kotlin.android") apply false
-    id("org.jetbrains.kotlin.plugin.compose") apply false
-}
+// Les plugins sont déclarés dans settings.gradle.kts et appliqués dans chaque module
+// (ainsi le module :core se compile même sans SDK Android, avec -PcoreOnly=true).
