@@ -21,7 +21,10 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.superessence.jarvis.BuildConfig
 import com.superessence.jarvis.JarvisApp
 import com.superessence.jarvis.R
+import com.superessence.jarvis.core.ai.AiErrorKind
 import com.superessence.jarvis.core.ai.AiException
 import com.superessence.jarvis.core.ai.AiProviderConfig
 import com.superessence.jarvis.core.ai.AiProviderType
@@ -144,8 +148,17 @@ private fun ProviderCard(app: JarvisApp, cfg: AiProviderConfig, canUp: Boolean, 
     var show by remember { mutableStateOf(false) }
     var test by remember { mutableStateOf<String?>(null) }
     var advanced by remember { mutableStateOf(cfg.type == AiProviderType.CUSTOM) }
+    var models by remember { mutableStateOf<List<String>>(emptyList()) }
+    var menu by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     fun current() = cfg.copy(apiKey = key.trim(), model = model.trim(), baseUrl = url.trim())
+    // Interroge le fournisseur pour proposer les modèles réellement disponibles avec cette clé.
+    suspend fun loadModels(): String? = withContext(Dispatchers.IO) {
+        try {
+            models = app.ai.listModels(current())
+            if (models.isEmpty()) "✗ Aucun modèle proposé par le fournisseur." else { menu = true; null }
+        } catch (e: AiException) { "✗ ${e.message}" } catch (e: Exception) { "✗ ${e.message}" }
+    }
 
     Section(cfg.type.displayName) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -161,7 +174,22 @@ private fun ProviderCard(app: JarvisApp, cfg: AiProviderConfig, canUp: Boolean, 
             trailingIcon = { IconButton(onClick = { show = !show }) { Icon(if (show) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, "Afficher la clé") } },
             modifier = Modifier.fillMaxWidth(),
         )
-        OutlinedTextField(model, { model = it }, label = { Text("Modèle") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Box {
+            OutlinedTextField(model, { model = it }, label = { Text("Modèle") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                models.forEach { m ->
+                    DropdownMenuItem(text = { Text(m) }, onClick = {
+                        model = m; menu = false
+                        app.settings.saveProvider(current())
+                        test = "Modèle « $m » enregistré. Appuyez sur Tester."
+                    })
+                }
+            }
+        }
+        TextButton(onClick = {
+            test = "Recherche des modèles…"
+            scope.launch { test = loadModels() }
+        }) { Text("Choisir le modèle dans la liste") }
         if (advanced) OutlinedTextField(url, { url = it }, label = { Text("Adresse de l'API") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
         if (cfg.type == AiProviderType.GEMINI) {
@@ -179,12 +207,21 @@ private fun ProviderCard(app: JarvisApp, cfg: AiProviderConfig, canUp: Boolean, 
                         try {
                             val a = app.ai.askOne(current().copy(enabled = true), "Réponds en un seul mot.", listOf(ChatMessage(Role.USER, "Dis bonjour")))
                             "✓ Fonctionne : « ${a.text.take(40)} »"
-                        } catch (e: AiException) { "✗ ${e.message}" } catch (e: Exception) { "✗ ${e.message}" }
+                        } catch (e: AiException) {
+                            if (e.kind == AiErrorKind.BAD_REQUEST && cfg.type != AiProviderType.CUSTOM) {
+                                // Modèle inconnu ou retiré : on propose directement la liste à jour.
+                                val err = loadModels()
+                                "✗ ${e.message}" + if (err == null) "\nChoisissez un modèle disponible dans la liste." else ""
+                            } else "✗ ${e.message}"
+                        } catch (e: Exception) { "✗ ${e.message}" }
                     }
                 }
             }) { Text("Tester") }
         }
         test?.let { Text(it, color = if (it.startsWith("✗")) JColors.Error else JColors.Ok, fontSize = 13.sp) }
+        if (test?.contains("quota", ignoreCase = true) == true) {
+            Hint("Quota atteint : attendez sa remise à zéro, choisissez un modèle plus léger dans la liste, ou laissez Jarvis passer au fournisseur suivant.")
+        }
         Row {
             TextButton(onClick = { Perms.openUrl(ctx, cfg.type.keyHelpUrl) }) { Text("Obtenir une clé") }
             TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Masquer l'adresse" else "Avancé") }

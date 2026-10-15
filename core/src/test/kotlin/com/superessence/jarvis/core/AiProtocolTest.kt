@@ -102,11 +102,56 @@ class AiProtocolTest {
             calls += req.url
             if (req.url.contains("groq")) HttpResult(429, "{}")
             else HttpResult(200, """{"choices":[{"message":{"content":"OK Mistral"}}]}""")
-        }, { listOf(cfg(AiProviderType.GROQ), cfg(AiProviderType.MISTRAL)) })
+        }, { listOf(cfg(AiProviderType.GROQ), cfg(AiProviderType.MISTRAL)) }, retryDelayMs = 0)
         val a = orch.ask("s", hist)
         assertEquals("OK Mistral", a.text)
         assertEquals(AiProviderType.MISTRAL, a.provider)
         assertEquals(2, calls.size)
+    }
+
+    @Test fun rateLimitRetriedOnceButNotQuota() {
+        var n = 0
+        val orch = AiOrchestrator({ _, _ ->
+            n++
+            if (n == 1) HttpResult(429, """{"message":"Rate limit exceeded"}""")
+            else HttpResult(200, """{"choices":[{"message":{"content":"OK"}}]}""")
+        }, { listOf(cfg(AiProviderType.MISTRAL)) }, retryDelayMs = 1)
+        assertEquals("OK", orch.ask("s", hist).text)
+        assertEquals(2, n)
+
+        var q = 0
+        val quota = AiOrchestrator({ _, _ -> q++; HttpResult(429, """{"error":{"message":"You exceeded your current quota"}}""") },
+            { listOf(cfg(AiProviderType.GEMINI)) }, retryDelayMs = 1)
+        try { quota.ask("s", hist); fail() } catch (e: AiException) { assertEquals(AiErrorKind.RATE_LIMIT, e.kind) }
+        assertEquals(1, q)
+    }
+
+    @Test fun geminiQuotaDetailsSummarized() {
+        val body = """{"error":{"code":429,"message":"You exceeded your current quota, please check your plan and billing details.",
+            "details":[{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaMetric":"generativelanguage.googleapis.com/generate_content_free_tier_requests",
+            "quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]},
+            {"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"42.5s"}]}}"""
+        val msg = AiProtocol.extractError(body)!!
+        assertTrue(msg, msg.startsWith("quota du jour épuisé (offre gratuite), réessayer dans 42 s"))
+    }
+
+    @Test fun modelListsParsed() {
+        val gemini = """{"models":[{"name":"models/gemini-3.8-flash","supportedGenerationMethods":["generateContent"]},
+            {"name":"models/text-embedding-004","supportedGenerationMethods":["embedContent"]},
+            {"name":"models/gemini-3.8-flash-lite","supportedGenerationMethods":["generateContent","countTokens"]}]}"""
+        assertEquals(listOf("gemini-3.8-flash", "gemini-3.8-flash-lite"), AiProtocol.parseModels(AiProviderType.GEMINI, HttpResult(200, gemini)))
+        val groq = """{"data":[{"id":"whisper-large-v3"},{"id":"openai/gpt-oss-120b"},{"id":"meta-llama/llama-guard-4-12b"},{"id":"qwen/qwen3.6-27b"}]}"""
+        assertEquals(listOf("openai/gpt-oss-120b", "qwen/qwen3.6-27b"), AiProtocol.parseModels(AiProviderType.GROQ, HttpResult(200, groq)))
+        val r = AiProtocol.buildModelsRequest(cfg(AiProviderType.GEMINI))
+        assertTrue(r.url.startsWith("https://generativelanguage.googleapis.com/v1beta/models"))
+        assertEquals("cle-test", r.headers["x-goog-api-key"])
+    }
+
+    @Test fun groqDefaultsToGptOssWithLowReasoning() {
+        assertEquals("openai/gpt-oss-120b", AiProviderType.GROQ.migrateModel("llama-3.3-70b-versatile"))
+        val b = JSONObject(AiProtocol.buildRequest(cfg(AiProviderType.GROQ), "sys", hist).body)
+        assertEquals("openai/gpt-oss-120b", b.getString("model"))
+        assertEquals("low", b.getString("reasoning_effort"))
     }
 
     @Test fun orchestratorNetworkErrorAndNoConfig() {

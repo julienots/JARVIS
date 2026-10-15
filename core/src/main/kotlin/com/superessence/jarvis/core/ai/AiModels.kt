@@ -28,8 +28,12 @@ enum class AiProviderType(
         "https://platform.openai.com/api-keys", "Payant à l'usage. L'abonnement ChatGPT Plus n'inclut pas l'API.",
     ),
     GROQ(
-        "Groq", "llama-3.3-70b-versatile", "https://api.groq.com/openai/v1",
+        "Groq", "openai/gpt-oss-120b", "https://api.groq.com/openai/v1",
         "https://console.groq.com/keys", "Offre gratuite généreuse avec limites de débit, très rapide.",
+        retiredModels = setOf(
+            "llama-3.3-70b-versatile", "llama-3.1-70b-versatile",
+            "llama3-70b-8192", "llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it",
+        ),
     ),
     MISTRAL(
         "Mistral AI", "mistral-small-latest", "https://api.mistral.ai/v1",
@@ -75,6 +79,10 @@ data class HttpResult(val code: Int, val body: String)
 fun interface HttpClient {
     @Throws(java.io.IOException::class)
     fun post(request: HttpRequestSpec, timeoutMs: Int): HttpResult
+
+    @Throws(java.io.IOException::class)
+    fun get(url: String, headers: Map<String, String> = emptyMap(), timeoutMs: Int = 15_000): HttpResult =
+        throw java.io.IOException("GET non pris en charge")
 }
 
 enum class AiErrorKind(val userMessage: String) {

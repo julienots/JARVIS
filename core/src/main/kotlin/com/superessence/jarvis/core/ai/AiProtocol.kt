@@ -61,12 +61,49 @@ object AiProtocol {
                     AiProviderType.OPENAI, AiProviderType.GROQ -> body.put("max_completion_tokens", MAX_TOKENS)
                     else -> body.put("max_tokens", MAX_TOKENS).put("temperature", 0.7)
                 }
+                // Les modèles gpt-oss raisonnent avant de répondre : on limite ce raisonnement pour garder des tokens à la réponse.
+                if (config.type == AiProviderType.GROQ && config.model.contains("gpt-oss")) body.put("reasoning_effort", "low")
                 val headers = mutableMapOf("Content-Type" to "application/json")
                 if (config.apiKey.isNotBlank()) headers["Authorization"] = "Bearer ${config.apiKey.trim()}"
                 if (config.type == AiProviderType.CUSTOM) headers["X-Title"] = "Jarvis"
                 HttpRequestSpec("$base/chat/completions", headers, body.toString())
             }
         }
+    }
+
+    /** Requête GET listant les modèles accessibles avec la clé. */
+    fun buildModelsRequest(config: AiProviderConfig): HttpRequestSpec {
+        val base = config.baseUrl.trimEnd('/')
+        val key = config.apiKey.trim()
+        return when (config.type) {
+            AiProviderType.GEMINI -> HttpRequestSpec("$base/models?pageSize=1000", mapOf("x-goog-api-key" to key), "")
+            AiProviderType.CLAUDE -> HttpRequestSpec("$base/models?limit=100", mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01"), "")
+            else -> HttpRequestSpec("$base/models", if (key.isNotBlank()) mapOf("Authorization" to "Bearer $key") else emptyMap(), "")
+        }
+    }
+
+    private val NON_CHAT = listOf("embed", "tts", "whisper", "transcribe", "audio", "image", "imagen", "veo", "dall-e",
+        "moderation", "guard", "realtime", "aqa", "live", "computer-use", "robotics", "search")
+
+    /** Liste triée des modèles de conversation, ou [AiException] si la requête a échoué. */
+    fun parseModels(type: AiProviderType, result: HttpResult): List<String> {
+        if (result.code !in 200..299) throw AiException(errorKind(result.code), type, extractError(result.body))
+        val json = try { JSONObject(result.body) } catch (e: Exception) {
+            throw AiException(AiErrorKind.BAD_RESPONSE, type, e.message)
+        }
+        val ids = if (type == AiProviderType.GEMINI) {
+            val arr = json.optJSONArray("models") ?: JSONArray()
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+                .filter { m ->
+                    val methods = m.optJSONArray("supportedGenerationMethods") ?: JSONArray()
+                    (0 until methods.length()).any { methods.optString(it) == "generateContent" }
+                }
+                .map { it.optString("name").removePrefix("models/") }
+        } else {
+            val arr = json.optJSONArray("data") ?: JSONArray()
+            (0 until arr.length()).map { arr.getJSONObject(it).optString("id") }
+        }
+        return ids.filter { id -> id.isNotBlank() && NON_CHAT.none { id.lowercase().contains(it) } }.distinct().sorted()
     }
 
     /** Extrait le texte de la réponse ou lève une [AiException] typée. */
@@ -115,15 +152,40 @@ object AiProtocol {
         else -> AiErrorKind.BAD_RESPONSE
     }
 
-    private fun extractError(body: String): String? = try {
+    fun extractError(body: String): String? = try {
         val j = JSONObject(body)
         val e = j.opt("error")
-        when (e) {
+        val message = when (e) {
             is JSONObject -> e.optString("message").ifBlank { null }
             is String -> e
             else -> j.optString("message").ifBlank { null }
-        }?.take(200)
+        }
+        // Google détaille les quotas dans error.details : on les met en tête car le message est souvent tronqué.
+        val quota = (e as? JSONObject)?.let { quotaSummary(it) }
+        listOfNotNull(quota, message).joinToString(" — ").ifBlank { null }?.take(240)
     } catch (_: Exception) { body.take(120).ifBlank { null } }
+
+    private fun quotaSummary(error: JSONObject): String? {
+        val details = error.optJSONArray("details") ?: return null
+        var limit: String? = null
+        var retry: String? = null
+        for (i in 0 until details.length()) {
+            val d = details.optJSONObject(i) ?: continue
+            val t = d.optString("@type")
+            if (t.endsWith("QuotaFailure")) {
+                val v = d.optJSONArray("violations")?.optJSONObject(0) ?: continue
+                val id = v.optString("quotaId").ifBlank { v.optString("quotaMetric") }
+                limit = when {
+                    id.contains("PerDay", ignoreCase = true) -> "quota du jour épuisé"
+                    id.contains("PerMinute", ignoreCase = true) -> "limite par minute atteinte"
+                    else -> "quota épuisé"
+                } + if (id.contains("FreeTier", ignoreCase = true)) " (offre gratuite)" else ""
+            } else if (t.endsWith("RetryInfo")) {
+                retry = d.optString("retryDelay").ifBlank { null }?.let { "réessayer dans ${it.substringBefore('.').removeSuffix("s")} s" }
+            }
+        }
+        return listOfNotNull(limit, retry).joinToString(", ").ifBlank { null }
+    }
 
     /**
      * Les API exigent un historique qui commence par l'utilisateur et alterne les rôles.
