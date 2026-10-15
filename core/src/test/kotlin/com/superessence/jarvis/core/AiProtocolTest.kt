@@ -25,13 +25,19 @@ class AiProtocolTest {
 
     @Test fun geminiRequest() {
         val r = AiProtocol.buildRequest(cfg(AiProviderType.GEMINI).copy(webGrounding = true), "sys", hist)
-        assertTrue(r.url.endsWith("/models/gemini-2.5-flash:generateContent"))
+        assertTrue(r.url.endsWith("/models/gemini-3.8-flash:generateContent"))
         assertEquals("cle-test", r.headers["x-goog-api-key"])
         val b = JSONObject(r.body)
         assertEquals("sys", b.getJSONObject("systemInstruction").getJSONArray("parts").getJSONObject(0).getString("text"))
         assertEquals("user", b.getJSONArray("contents").getJSONObject(0).getString("role"))
         assertTrue(b.has("tools"))
         assertFalse(r.url.contains("cle-test")) // la clé ne doit pas apparaître dans l'URL
+    }
+
+    @Test fun retiredGeminiModelIsMigrated() {
+        assertEquals("gemini-3.8-flash", AiProviderType.GEMINI.migrateModel("gemini-2.5-flash"))
+        assertEquals("gemini-3.8-flash", AiProviderType.GEMINI.migrateModel(null))
+        assertEquals("gemini-3.8-pro", AiProviderType.GEMINI.migrateModel("gemini-3.8-pro"))
     }
 
     @Test fun claudeRequest() {

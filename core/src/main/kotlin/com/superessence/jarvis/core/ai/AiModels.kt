@@ -8,10 +8,16 @@ enum class AiProviderType(
     val keyHelpUrl: String,
     val pricingNote: String,
     val requiresKey: Boolean = true,
+    /** Modèles retirés par le fournisseur : remplacés automatiquement par [defaultModel]. */
+    val retiredModels: Set<String> = emptySet(),
 ) {
     GEMINI(
-        "Google Gemini", "gemini-2.5-flash", "https://generativelanguage.googleapis.com/v1beta",
+        "Google Gemini", "gemini-3.8-flash", "https://generativelanguage.googleapis.com/v1beta",
         "https://aistudio.google.com/apikey", "Offre gratuite avec quotas, puis facturation à l'usage.",
+        retiredModels = setOf(
+            "gemini-pro", "gemini-1.0-pro", "gemini-1.5-flash", "gemini-1.5-pro",
+            "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash",
+        ),
     ),
     CLAUDE(
         "Anthropic Claude", "claude-sonnet-5-5", "https://api.anthropic.com/v1",
@@ -34,6 +40,12 @@ enum class AiProviderType(
         "https://openrouter.ai/keys", "Dépend du service choisi. Un serveur local (Ollama) est gratuit.",
         requiresKey = false,
     );
+
+    /** Renvoie le modèle à utiliser : le modèle par défaut si [model] est vide ou retiré. */
+    fun migrateModel(model: String?): String {
+        val m = model?.trim().orEmpty()
+        return if (m.isEmpty() || m.removePrefix("models/") in retiredModels) defaultModel else m
+    }
 
     val isOpenAiCompatible get() = this == OPENAI || this == GROQ || this == MISTRAL || this == CUSTOM
 }

@@ -99,7 +99,7 @@ class SettingsRepository(context: Context, private val secrets: SecureKeyStore) 
         AiProviderConfig(
             type = t,
             apiKey = secrets.get("key_${t.name}"),
-            model = prefs.getString("ai_${t.name}_model", null) ?: t.defaultModel,
+            model = t.migrateModel(prefs.getString("ai_${t.name}_model", null)),
             baseUrl = prefs.getString("ai_${t.name}_url", null) ?: t.defaultBaseUrl,
             enabled = prefs.getBoolean("ai_${t.name}_enabled", false),
             webGrounding = prefs.getBoolean("ai_${t.name}_web", false),
