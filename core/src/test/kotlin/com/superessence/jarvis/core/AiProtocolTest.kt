@@ -25,7 +25,7 @@ class AiProtocolTest {
 
     @Test fun geminiRequest() {
         val r = AiProtocol.buildRequest(cfg(AiProviderType.GEMINI).copy(webGrounding = true), "sys", hist)
-        assertTrue(r.url.endsWith("/models/gemini-2.5-flash:generateContent"))
+        assertTrue(r.url.endsWith("/models/gemini-flash-latest:generateContent"))
         assertEquals("cle-test", r.headers["x-goog-api-key"])
         val b = JSONObject(r.body)
         assertEquals("sys", b.getJSONObject("systemInstruction").getJSONArray("parts").getJSONObject(0).getString("text"))

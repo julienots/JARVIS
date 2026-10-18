@@ -107,6 +107,88 @@ object AiProtocol {
         return text.trim()
     }
 
+    // ---------- Découverte automatique des modèles ----------
+
+    /** Requête GET qui liste les modèles accessibles avec cette clé. */
+    fun modelsRequest(config: AiProviderConfig): Pair<String, Map<String, String>> {
+        val base = config.baseUrl.trimEnd('/')
+        val key = config.apiKey.trim()
+        return when (config.type) {
+            AiProviderType.GEMINI -> "$base/models?pageSize=1000" to mapOf("x-goog-api-key" to key)
+            AiProviderType.CLAUDE -> "$base/models?limit=100" to mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01")
+            else -> "$base/models" to (if (key.isNotBlank()) mapOf("Authorization" to "Bearer $key") else emptyMap())
+        }
+    }
+
+    /** Noms des modèles de discussion présents dans la réponse de [modelsRequest]. */
+    fun parseModels(type: AiProviderType, body: String): List<String> {
+        val json = try { JSONObject(body) } catch (_: Exception) { return emptyList() }
+        return if (type == AiProviderType.GEMINI) {
+            val arr = json.optJSONArray("models") ?: return emptyList()
+            (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+                .filter { m ->
+                    val methods = m.optJSONArray("supportedGenerationMethods")
+                    methods == null || (0 until methods.length()).any { methods.optString(it) == "generateContent" }
+                }
+                .map { it.optString("name").removePrefix("models/") }.filter { it.isNotBlank() }
+        } else {
+            val arr = json.optJSONArray("data") ?: return emptyList()
+            (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+                .filter { it.optBoolean("active", true) }
+                .map { it.optString("id") }.filter { it.isNotBlank() }
+        }
+    }
+
+    private val notChat = Regex("embed|whisper|tts|audio|speech|transcri|realtime|image|imagen|veo|vision-preview|dall|moderation|guard|" +
+        "davinci|babbage|instruct|search|computer|robotics|aqa|learnlm|gemma|native|live|ocr|codestral|devstral|prompt|safeguard|compound|lyria|nano")
+
+    /** Choisit le meilleur modèle généraliste rapide parmi [models] (sans modèle de niche ni préversion si possible). */
+    fun pickModel(type: AiProviderType, models: List<String>): String? {
+        val usable = models.filter { !notChat.containsMatchIn(it.lowercase()) }.ifEmpty { return null }
+        // Version du modèle, sans les dates (2025-04-14) ni les tailles (70b, 120b).
+        fun version(m: String) = Regex("(\\d+(?:\\.\\d+)?)")
+            .findAll(m.replace(Regex("\\d{4}-?\\d{2}-?\\d{2}|\\d+(\\.\\d+)?[bkm]\\b|-\\d{3,4}\\b"), ""))
+            .map { it.value.toDoubleOrNull() ?: 0.0 }.filter { it < 100 }.maxOrNull() ?: 0.0
+        fun score(m: String): Double {
+            val n = m.lowercase()
+            var s = version(n)
+            if (n.contains("preview") || n.contains("exp") || Regex("\\d{4}-?\\d{2}-?\\d{2}").containsMatchIn(n)) s -= 50
+            when (type) {
+                AiProviderType.GEMINI -> {
+                    if (n == "gemini-flash-latest") s += 1000
+                    if (n.contains("flash")) s += 100
+                    if (n.contains("lite")) s -= 40
+                    if (!n.startsWith("gemini")) s -= 500
+                }
+                AiProviderType.GROQ -> {
+                    if (n.contains("versatile")) s += 120
+                    if (n.contains("gpt-oss-120b")) s += 110
+                    if (n.contains("llama") || n.contains("qwen") || n.contains("kimi")) s += 60
+                    if (n.contains("instant") || n.contains("8b") || n.contains("20b")) s -= 30
+                }
+                AiProviderType.OPENAI -> {
+                    if (!n.startsWith("gpt")) s -= 500
+                    if (n.contains("mini")) s += 100
+                    if (n.contains("nano")) s -= 20
+                    if (n.contains("chat-latest") || n.contains("codex") || n.contains("oss")) s -= 200
+                }
+                AiProviderType.MISTRAL -> {
+                    if (n == "mistral-small-latest") s += 1000
+                    if (n == "mistral-medium-latest") s += 900
+                    if (n.endsWith("-latest")) s += 100
+                    if (n.contains("embed") || n.contains("pixtral") || n.contains("ministral")) s -= 100
+                }
+                AiProviderType.CLAUDE -> {
+                    if (n.contains("sonnet")) s += 100
+                    if (n.contains("haiku")) s += 60
+                }
+                AiProviderType.CUSTOM -> {}
+            }
+            return s
+        }
+        return usable.maxByOrNull { score(it) }
+    }
+
     fun errorKind(code: Int): AiErrorKind = when (code) {
         401, 403 -> AiErrorKind.AUTH
         429 -> AiErrorKind.RATE_LIMIT

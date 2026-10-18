@@ -10,7 +10,7 @@ enum class AiProviderType(
     val requiresKey: Boolean = true,
 ) {
     GEMINI(
-        "Google Gemini", "gemini-2.5-flash", "https://generativelanguage.googleapis.com/v1beta",
+        "Google Gemini", "gemini-flash-latest", "https://generativelanguage.googleapis.com/v1beta",
         "https://aistudio.google.com/apikey", "Offre gratuite avec quotas, puis facturation à l'usage.",
     ),
     CLAUDE(
@@ -22,7 +22,7 @@ enum class AiProviderType(
         "https://platform.openai.com/api-keys", "Payant à l'usage. L'abonnement ChatGPT Plus n'inclut pas l'API.",
     ),
     GROQ(
-        "Groq", "llama-3.3-70b-versatile", "https://api.groq.com/openai/v1",
+        "Groq", "openai/gpt-oss-120b", "https://api.groq.com/openai/v1",
         "https://console.groq.com/keys", "Offre gratuite généreuse avec limites de débit, très rapide.",
     ),
     MISTRAL(
@@ -63,6 +63,11 @@ data class HttpResult(val code: Int, val body: String)
 fun interface HttpClient {
     @Throws(java.io.IOException::class)
     fun post(request: HttpRequestSpec, timeoutMs: Int): HttpResult
+
+    /** GET (liste des modèles). Les clients de test peuvent ne pas le proposer. */
+    @Throws(java.io.IOException::class)
+    fun get(url: String, headers: Map<String, String> = emptyMap(), timeoutMs: Int = 15_000): HttpResult =
+        throw java.io.IOException("GET non pris en charge")
 }
 
 enum class AiErrorKind(val userMessage: String) {

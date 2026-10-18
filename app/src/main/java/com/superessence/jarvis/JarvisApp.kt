@@ -52,7 +52,7 @@ class JarvisApp : Application() {
         ai = AiOrchestrator(http, {
             val s = settings.current
             if (s.privateMode) emptyList() else settings.orderedProviders()
-        })
+        }, onModelChanged = { type, model -> settings.updateModel(type, model) })
         executor = AndroidActionExecutor(this)
         brain = AssistantBrain(
             parser = IntentParser(listOf("jarvis")),

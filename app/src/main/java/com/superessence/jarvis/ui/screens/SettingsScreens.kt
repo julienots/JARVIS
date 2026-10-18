@@ -178,7 +178,8 @@ private fun ProviderCard(app: JarvisApp, cfg: AiProviderConfig, canUp: Boolean, 
                     test = withContext(Dispatchers.IO) {
                         try {
                             val a = app.ai.askOne(current().copy(enabled = true), "Réponds en un seul mot.", listOf(ChatMessage(Role.USER, "Dis bonjour")))
-                            "✓ Fonctionne : « ${a.text.take(40)} »"
+                            if (a.model != current().model) withContext(Dispatchers.Main) { model = a.model }
+                            "✓ Fonctionne avec ${a.model} : « ${a.text.take(40)} »"
                         } catch (e: AiException) { "✗ ${e.message}" } catch (e: Exception) { "✗ ${e.message}" }
                     }
                 }

@@ -86,6 +86,12 @@ class SettingsRepository(context: Context, private val secrets: SecureKeyStore) 
         _providers.value = loadProviders()
     }
 
+    /** Modèle remplacé automatiquement (l'ancien n'existe plus chez le fournisseur). */
+    fun updateModel(type: AiProviderType, model: String) {
+        prefs.edit().putString("ai_${type.name}_model", model).apply()
+        _providers.value = loadProviders()
+    }
+
     fun moveProvider(type: AiProviderType, delta: Int) = update { s ->
         val list = s.providerOrder.toMutableList()
         val i = list.indexOf(type)

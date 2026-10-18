@@ -10,7 +10,7 @@ class UrlConnectionHttpClient : HttpClient {
     override fun post(request: HttpRequestSpec, timeoutMs: Int): HttpResult =
         execute("POST", request.url, request.headers, request.body, timeoutMs)
 
-    fun get(url: String, headers: Map<String, String> = emptyMap(), timeoutMs: Int = 15_000): HttpResult =
+    override fun get(url: String, headers: Map<String, String>, timeoutMs: Int): HttpResult =
         execute("GET", url, headers, null, timeoutMs)
 
     private fun execute(method: String, url: String, headers: Map<String, String>, body: String?, timeoutMs: Int): HttpResult {
