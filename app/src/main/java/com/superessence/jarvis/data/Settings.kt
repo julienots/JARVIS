@@ -36,6 +36,8 @@ data class JarvisSettings(
     val ttsRate: Float = 1.0f,
     val ttsPitch: Float = 0.95f,
     val ttsVoice: String = "",
+    /** Voix Jarvis : voix masculine grave + effets, locale et illimitée. */
+    val jarvisVoice: Boolean = true,
     val earcons: Boolean = true,
     val ecoMode: Boolean = false,
     val sphereStyle: SphereStyle = SphereStyle.HOLOGRAM,
@@ -128,6 +130,7 @@ class SettingsRepository(context: Context, private val secrets: SecureKeyStore) 
             ttsRate = prefs.getFloat("ttsRate", d.ttsRate),
             ttsPitch = prefs.getFloat("ttsPitch", d.ttsPitch),
             ttsVoice = prefs.getString("ttsVoice", d.ttsVoice) ?: "",
+            jarvisVoice = prefs.getBoolean("jarvisVoice", d.jarvisVoice),
             earcons = prefs.getBoolean("earcons", d.earcons),
             ecoMode = prefs.getBoolean("ecoMode", d.ecoMode),
             sphereStyle = enumOr(prefs.getString("sphereStyle", null), d.sphereStyle),
@@ -158,6 +161,7 @@ class SettingsRepository(context: Context, private val secrets: SecureKeyStore) 
             .putFloat("ttsRate", s.ttsRate)
             .putFloat("ttsPitch", s.ttsPitch)
             .putString("ttsVoice", s.ttsVoice)
+            .putBoolean("jarvisVoice", s.jarvisVoice)
             .putBoolean("earcons", s.earcons)
             .putBoolean("ecoMode", s.ecoMode)
             .putString("sphereStyle", s.sphereStyle.name)

@@ -87,6 +87,13 @@ Rendu OpenGL ES 2.0 : une sphère déformée en temps réel par un bruit 3D, ave
 - Quatre styles (Hologramme, Or SuperEssence, Nébuleuse, Émeraude), mode économie (20 images/s),
   et respect du réglage Android « Supprimer les animations ». Si OpenGL est indisponible, une version 2D prend le relais.
 
+### Voix Jarvis
+Activée par défaut (Réglages → Voix). Jarvis choisit la voix d'homme française la plus grave installée sur le téléphone,
+de préférence hors ligne, puis la passe dans un égaliseur et une légère réverbération pour un timbre d'assistant IA.
+La voix est générée sur le téléphone : **gratuite, sans quota, illimitée**, même sans Internet. La sphère suit le niveau réel de la voix.
+Pour la meilleure qualité : Synthèse vocale Android → Services vocaux Google → Français → télécharger les voix.
+La voix de l'acteur du film n'est pas reproduite : c'est la voix d'une personne réelle, protégée.
+
 ## 5. Autorisations et leur utilité
 
 | Autorisation | Utilité | Obligatoire ? |

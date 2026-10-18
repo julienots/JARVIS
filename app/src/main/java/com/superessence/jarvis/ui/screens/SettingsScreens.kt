@@ -262,6 +262,10 @@ fun VoiceSettingsScreen(activity: MainActivity, app: JarvisApp, onBack: () -> Un
             SwitchRow("Son de réveil", "Petit bip quand Jarvis commence à écouter.", s.earcons) { v -> app.settings.update { it.copy(earcons = v) } }
         }
         Section("Voix de Jarvis") {
+            SwitchRow("Voix Jarvis", "Voix masculine grave avec un timbre d'IA (égaliseur et légère réverbération). " +
+                "Générée sur le téléphone : gratuite, sans quota, illimitée, même hors ligne.", s.jarvisVoice) { on ->
+                app.settings.update { it.copy(jarvisVoice = on) }
+            }
             Text("Débit : ${"%.1f".format(s.ttsRate)}", color = JColors.Text, fontSize = 14.sp)
             Slider(value = s.ttsRate, onValueChange = { v -> app.settings.update { it.copy(ttsRate = v) } }, valueRange = 0.6f..1.8f)
             Text("Hauteur : ${"%.1f".format(s.ttsPitch)}", color = JColors.Text, fontSize = 14.sp)
@@ -270,13 +274,16 @@ fun VoiceSettingsScreen(activity: MainActivity, app: JarvisApp, onBack: () -> Un
             if (voices.isNotEmpty()) {
                 Text("Voix française", color = JColors.Cyan, fontSize = 13.sp)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(selected = s.ttsVoice.isBlank(), onClick = { app.settings.update { it.copy(ttsVoice = "") } }, label = { Text("Par défaut") })
+                    FilterChip(selected = s.ttsVoice.isBlank(), onClick = { app.settings.update { it.copy(ttsVoice = "") } },
+                        label = { Text(if (s.jarvisVoice) "Automatique (voix d'homme)" else "Par défaut") })
                     voices.take(12).forEachIndexed { i, v ->
                         FilterChip(selected = s.ttsVoice == v.name, onClick = { app.settings.update { it.copy(ttsVoice = v.name) } },
                             label = { Text("Voix ${i + 1}${if (v.isNetworkConnectionRequired) " (en ligne)" else ""}") })
                     }
                 }
             } else Hint("Aucune voix française détectée. Installez-en une dans les réglages de synthèse vocale d'Android.")
+            Hint("Pour la meilleure voix : Synthèse vocale Android → moteur « Services vocaux Google » → Français → téléchargez les voix " +
+                "(hors ligne). Jarvis choisit alors automatiquement la voix d'homme la plus grave.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { app.session.announce("Bonjour, je suis Jarvis. Tous les systèmes sont opérationnels.") }) { Text("Écouter") }
                 OutlinedButton(onClick = { Perms.openTtsSettings(activity) }) { Text("Synthèse vocale Android") }

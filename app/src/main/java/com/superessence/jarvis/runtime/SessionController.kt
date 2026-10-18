@@ -83,6 +83,7 @@ class SessionController(private val app: JarvisApp) {
     init {
         machine.addListener { _, to -> _state.value = to }
         tts.onSpeakingChanged = { speaking -> if (!speaking) _level.value = 0f }
+        tts.onLevel = { lv -> if (tts.isSpeaking) _level.value = lv }
         tts.onWord = { _level.value = 0.45f + Math.random().toFloat() * 0.55f; main.postDelayed({ if (tts.isSpeaking) _level.value *= 0.5f }, 120) }
         if (app.settings.current.privateMode) machine.reset(AssistantState.MIC_OFF)
         if (app.settings.current.historyEnabled) {
@@ -90,7 +91,7 @@ class SessionController(private val app: JarvisApp) {
         }
         scope.launch {
             app.settings.flow.collect { s ->
-                tts.applySettings(s.ttsRate, s.ttsPitch, s.ttsVoice)
+                tts.applySettings(s.ttsRate, s.ttsPitch, s.ttsVoice, s.jarvisVoice)
                 if (s.privateMode && _state.value != AssistantState.MIC_OFF) {
                     cancelAll(); machine.reset(AssistantState.MIC_OFF)
                 } else if (!s.privateMode && _state.value == AssistantState.MIC_OFF) machine.reset(AssistantState.IDLE)
