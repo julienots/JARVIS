@@ -72,5 +72,6 @@ class MainActivity : ComponentActivity() {
         AppVisibility.activityVisible = false
         // Si une conversation est en cours, elle continue dans la bulle flottante.
         if (app.session.isBusy || app.session.cards.value.isNotEmpty()) app.overlay.showIfAllowed()
+        else app.overlay.onAppVisible(false)
     }
 }

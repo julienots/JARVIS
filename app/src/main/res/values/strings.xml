@@ -6,4 +6,6 @@
     <string name="shortcut_talk_long">Parler à Jarvis</string>
     <string name="shortcut_overlay_short">Bulle</string>
     <string name="shortcut_overlay_long">Afficher la bulle Jarvis</string>
+    <string name="accessibility_label">Jarvis : gestes et lecture d\'écran</string>
+    <string name="accessibility_description">Permet à Jarvis, à votre demande vocale, de faire des gestes système (retour, accueil, applications récentes, volet de notifications, capture d\'écran, verrouillage) et de lire ou résumer le texte affiché à l\'écran sans quitter votre application. Jarvis ne lit l\'écran que lorsque vous le demandez, ignore les champs de mot de passe et n\'enregistre rien.</string>
 </resources>

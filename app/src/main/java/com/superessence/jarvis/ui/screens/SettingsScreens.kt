@@ -309,7 +309,11 @@ fun AppearanceScreen(app: JarvisApp, onBack: () -> Unit) {
             }
             Text("Disparition automatique après ${s.overlayAutoHideSeconds} s", color = JColors.Text, fontSize = 14.sp)
             Slider(value = s.overlayAutoHideSeconds.toFloat(), onValueChange = { v -> app.settings.update { it.copy(overlayAutoHideSeconds = v.roundToInt()) } }, valueRange = 3f..30f)
-            Hint("La bulle se déplace en la faisant glisser, s'épingle pour rester affichée, se réduit ou se ferme. Les minuteurs restent visibles jusqu'à la fin.")
+            SwitchRow("Sphère toujours visible", "Hors de l'appli, la sphère reste par-dessus vos applications : touchez-la pour parler.",
+                s.overlayAlwaysOn, enabled = Perms.overlay(ctx)) { on -> app.settings.update { it.copy(overlayAlwaysOn = on) } }
+            Hint("Seule la sphère s'affiche, sans fond. Touchez-la pour parler, faites-la glisser pour la déplacer, appui long pour la fermer. " +
+                "Les réponses s'ouvrent dans un mini-écran séparé que vous pouvez déplacer, épingler ou fermer ; il disparaît seul ensuite. " +
+                "Vous continuez d'utiliser l'application en dessous.")
             Button(enabled = Perms.overlay(ctx), onClick = { app.overlay.resetUserHide(); app.overlay.show(force = true) }) { Text("Afficher la bulle maintenant") }
         }
         Section("Personnalisation") {

@@ -234,7 +234,12 @@ class SphereRenderer(private val lowPower: Boolean, private val density: Float) 
         glow += (target.glow - glow) * k
         pulse += (target.pulse - pulse) * k
         spread += (target.spread - spread) * k
-        val lv = if (st == AssistantState.LISTENING || st == AssistantState.SPEAKING) level else 0f
+        val lv = when (st) {
+            AssistantState.LISTENING -> level
+            // Pendant qu'il parle, la sphère « articule » même si la voix Android ne signale pas chaque mot.
+            AssistantState.SPEAKING -> maxOf(level, 0.32f + 0.22f * sin(time * 9.0).toFloat() + 0.12f * sin(time * 23.0 + 1.3).toFloat())
+            else -> 0f
+        }
         smoothLevel += (lv - smoothLevel) * (1f - exp(-dt * 10f))
         tapFlash *= exp(-dt * 3f)
         val pal = Palette.of(style, st)

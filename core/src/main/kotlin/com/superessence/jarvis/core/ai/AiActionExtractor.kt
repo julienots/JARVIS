@@ -1,7 +1,9 @@
 package com.superessence.jarvis.core.ai
 
 import com.superessence.jarvis.core.intent.JarvisIntent
+import com.superessence.jarvis.core.intent.BrightnessCommand
 import com.superessence.jarvis.core.intent.SettingsTarget
+import com.superessence.jarvis.core.intent.SystemAction
 import org.json.JSONObject
 
 /**
@@ -30,7 +32,13 @@ object AiActionExtractor {
         - {"type":"play_music","query":"..."}
         - {"type":"weather","city":"..."}
         - {"type":"call","contact":"..."}   (sera confirmé par l'utilisateur)
-        - {"type":"send_message","contact":"...","message":"..."}   (sera confirmé, l'utilisateur appuie lui-même sur Envoyer)
+        - {"type":"send_message","contact":"...","message":"..."}   (sera confirmé par l'utilisateur)
+        - {"type":"phone_search","query":"..."}   (cherche dans les applis, contacts, fichiers et l'agenda du téléphone)
+        - {"type":"agenda","day":0}   (0 = aujourd'hui, 1 = demain)
+        - {"type":"brightness","percent":60}
+        - {"type":"dnd","on":true}   (mode Ne pas déranger)
+        - {"type":"system","action":"BACK|HOME|RECENTS|NOTIFICATIONS|QUICK_SETTINGS|SCREENSHOT|LOCK_SCREEN"}
+        - {"type":"read_screen","summarize":true}   (lit ou résume ce qui est affiché à l'écran)
         N'affirme jamais qu'une action est faite : dis plutôt que tu la lances. N'invente pas d'actions hors de cette liste.
     """.trimIndent()
 
@@ -59,6 +67,12 @@ object AiActionExtractor {
         "weather" -> JarvisIntent.Weather(j.optString("city").ifBlank { null })
         "call" -> j.optString("contact").takeIf { it.isNotBlank() }?.let { JarvisIntent.Call(it) }
         "send_message" -> j.optString("contact").takeIf { it.isNotBlank() }?.let { JarvisIntent.SendMessage(it, j.optString("message")) }
+        "phone_search" -> j.optString("query").takeIf { it.isNotBlank() }?.let { JarvisIntent.PhoneSearch(it) }
+        "agenda" -> JarvisIntent.Agenda(j.optInt("day", 0).coerceIn(0, 1))
+        "brightness" -> j.optInt("percent", -1).takeIf { it in 0..100 }?.let { JarvisIntent.Brightness(BrightnessCommand.SET, it) }
+        "dnd" -> JarvisIntent.DoNotDisturb(j.optBoolean("on", true))
+        "system" -> runCatching { SystemAction.valueOf(j.optString("action").uppercase()) }.getOrNull()?.let { JarvisIntent.System(it) }
+        "read_screen" -> JarvisIntent.ReadScreen(j.optBoolean("summarize", true))
         else -> null
     }
 }

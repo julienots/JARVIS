@@ -27,6 +27,11 @@ data class ActionResult(
     val success: Boolean,
     val speech: String,
     val cards: List<PanelCard> = emptyList(),
+    /**
+     * Demande à transmettre à l'IA pour compléter le résultat (résumer l'écran, répondre quand
+     * Wikipédia ne sait pas…). Sans IA configurée, [speech] est utilisé tel quel.
+     */
+    val aiFollowUp: String? = null,
 )
 
 /** Exécute les intentions sur l'appareil (implémenté côté Android). Peut bloquer : appelé hors du thread UI. */
@@ -187,7 +192,13 @@ class AssistantBrain(
             ActionResult(false, "L'action a échoué : ${e.message ?: "erreur inconnue"}.")
         }
         log(ActionLogEntry(now().toEpochMs(), intent.id, describe(intent) + " → " + result.speech, result.success, confirmed))
-        return BrainReply(result.speech, result.cards, intent, success = result.success, source = ReplySource.LOCAL)
+        val followUp = result.aiFollowUp
+        if (followUp != null && ai != null && ai.hasUsableProvider()) {
+            val answer = askAi(followUp)
+            if (answer.success) return answer.copy(cards = result.cards + answer.cards, intent = intent)
+        }
+        val speech = result.speech.ifBlank { if (followUp != null) "Je n'ai pas trouvé de réponse fiable." else "" }
+        return BrainReply(speech, result.cards, intent, success = result.success, source = ReplySource.LOCAL)
     }
 
     private fun askAi(text: String): BrainReply {
@@ -313,15 +324,20 @@ class AssistantBrain(
             is JarvisIntent.AddTask -> "Tâche « ${intent.text} »"
             is JarvisIntent.Reminder -> "Rappel « ${intent.text} »"
             is JarvisIntent.WebSearch -> "Recherche « ${intent.query} »"
+            is JarvisIntent.PhoneSearch -> "Recherche dans le téléphone « ${intent.query} »"
+            is JarvisIntent.System -> intent.action.label
             else -> intent.id
         }
 
         const val HELP_SPEECH = "Je peux donner l'heure, la météo, lancer un minuteur ou une alarme, créer des rappels et des tâches, " +
-            "ouvrir une application ou un réglage, contrôler la musique et le volume, allumer la lampe, chercher une information, " +
+            "ouvrir une application ou un réglage, contrôler la musique, le volume et la luminosité, allumer la lampe, " +
+            "chercher une information sur Internet ou dans votre téléphone, lire votre agenda, lire ou résumer l'écran, " +
             "et répondre à vos questions si une IA est configurée."
         const val HELP_CARD = "« Quelle heure est-il ? »\n« Lance un minuteur de 5 minutes »\n« Réveille-moi à 7 h 30 »\n" +
             "« Rappelle-moi dans 10 minutes de sortir le linge »\n« Ajoute du pain à ma liste »\n« Donne-moi la météo à Lyon »\n" +
             "« Ouvre Spotify »\n« Ouvre mes réglages Wi-Fi »\n« Allume la lampe »\n« Chanson suivante »\n« Cherche la tour Eiffel »\n" +
+            "« Cherche Paul dans mon téléphone »\n« Qu'est-ce que j'ai de prévu demain ? »\n« Résume l'écran »\n" +
+            "« Baisse la luminosité »\n« Active ne pas déranger »\n« Fais une capture d'écran »\n" +
             "« Ferme le panneau » · « Cache-toi » · « Arrête-toi » · « Arrête l'écoute »"
     }
 }

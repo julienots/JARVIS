@@ -15,6 +15,7 @@ import android.provider.AlarmClock
 import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,30 +45,67 @@ fun PermissionsScreen(activity: MainActivity, app: JarvisApp, onBack: () -> Unit
         refresh.intValue++
         if (!granted) Perms.openAppSettings(activity) // refus définitif : on ouvre les réglages
     }
+    // « Tout autoriser » : d'abord toutes les fenêtres Oui/Non, puis les écrans spéciaux un par un.
+    val reqAll = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        refresh.intValue++
+        Perms.missingSpecial(activity).firstOrNull()?.second?.invoke()
+    }
     fun st(ok: Boolean, required: Boolean = true) = if (ok) Status.OK else if (required) Status.NEEDED else Status.OFF
+    fun ask(p: String) = req.launch(p)
 
     ScrollScreen("Autorisations", onBack) {
-        Hint("Chaque autorisation est facultative : Jarvis reste utilisable sans elles, avec moins de fonctions. Vous pouvez les retirer à tout moment.")
+        val missingRuntime = Perms.missingRuntime(activity)
+        val missingSpecial = Perms.missingSpecial(activity)
+        Section("Tout autoriser") {
+            Hint(if (missingRuntime.isEmpty() && missingSpecial.isEmpty()) "Toutes les autorisations sont accordées : Jarvis peut tout automatiser sur ce téléphone."
+                else "Accorde d'un coup tout ce dont Jarvis a besoin pour automatiser le téléphone. Android demande d'abord les autorisations simples, " +
+                    "puis ouvre un par un les écrans spéciaux (${missingSpecial.size} restant${if (missingSpecial.size > 1) "s" else ""}) : " +
+                    "activez Jarvis, puis revenez ici et touchez de nouveau le bouton.")
+            if (missingRuntime.isNotEmpty() || missingSpecial.isNotEmpty()) {
+                Button(onClick = {
+                    if (missingRuntime.isNotEmpty()) reqAll.launch(missingRuntime)
+                    else missingSpecial.first().second.invoke()
+                }) { Text(if (missingRuntime.isNotEmpty()) "Tout autoriser" else "Suivant : ${missingSpecial.first().first}") }
+            }
+        }
         Section("Essentielles") {
             StatusRow("Micro", "Pour vous entendre. Utilisé uniquement pendant l'écoute.", st(Perms.mic(activity)),
-                if (Perms.mic(activity)) null else "Autoriser") { req.launch(Manifest.permission.RECORD_AUDIO) }
+                if (Perms.mic(activity)) null else "Autoriser") { ask(Manifest.permission.RECORD_AUDIO) }
             StatusRow("Notifications", "Rappels, minuteurs et indicateur d'écoute.", st(Perms.notifications(activity)),
-                if (Perms.notifications(activity) || Build.VERSION.SDK_INT < 33) null else "Autoriser") { req.launch(Manifest.permission.POST_NOTIFICATIONS) }
-        }
-        Section("Recommandées") {
+                if (Perms.notifications(activity) || Build.VERSION.SDK_INT < 33) null else "Autoriser") { ask(Manifest.permission.POST_NOTIFICATIONS) }
             StatusRow("Affichage par-dessus les applications",
-                "Bulle flottante, et ouverture d'applications à la voix quand Jarvis est en arrière-plan.",
+                "La sphère et les mini-écrans par-dessus vos applis, et l'ouverture d'applications à la voix en arrière-plan.",
                 st(Perms.overlay(activity)), if (Perms.overlay(activity)) null else "Ouvrir") { Perms.openOverlaySettings(activity) }
+        }
+        Section("Automatisation") {
+            StatusRow("Accessibilité", "Gestes à la voix (retour, accueil, capture, verrouillage) et « lis / résume l'écran » sans changer d'appli.",
+                st(Perms.accessibility(activity), false), if (Perms.accessibility(activity)) "Gérer" else "Activer") { Perms.openAccessibility(activity) }
+            StatusRow("Appels directs", "Après votre « oui », Jarvis lance l'appel lui-même.",
+                st(Perms.callPhone(activity), false), if (Perms.callPhone(activity)) null else "Autoriser") { ask(Manifest.permission.CALL_PHONE) }
+            StatusRow("Envoi de SMS", "Après votre « oui », Jarvis envoie le message lui-même.",
+                st(Perms.sendSms(activity), false), if (Perms.sendSms(activity)) null else "Autoriser") { ask(Manifest.permission.SEND_SMS) }
+            StatusRow("Contacts", "Trouver un numéro et chercher un contact à la voix.",
+                st(Perms.contacts(activity), false), if (Perms.contacts(activity)) null else "Autoriser") { ask(Manifest.permission.READ_CONTACTS) }
+            StatusRow("Agenda", "« Qu'est-ce que j'ai de prévu demain ? » et recherche d'événements.",
+                st(Perms.calendar(activity), false), if (Perms.calendar(activity)) null else "Autoriser") { ask(Manifest.permission.READ_CALENDAR) }
+            StatusRow("Photos, vidéos, musique", "Retrouver un fichier par son nom (« cherche vacances dans mes photos »).",
+                st(Perms.media(activity), false), if (Perms.media(activity)) null else "Autoriser") {
+                ask(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+            StatusRow("Localisation", "Météo de l'endroit où vous êtes, sans dire la ville.",
+                st(Perms.location(activity), false), if (Perms.location(activity)) null else "Autoriser") { ask(Manifest.permission.ACCESS_COARSE_LOCATION) }
+            StatusRow("Modifier les paramètres système", "Régler la luminosité à la voix.",
+                st(Perms.writeSettings(activity), false), if (Perms.writeSettings(activity)) null else "Ouvrir") { Perms.openWriteSettings(activity) }
+            StatusRow("Accès « Ne pas déranger »", "Activer ou couper le mode Ne pas déranger à la voix.",
+                st(Perms.dndAccess(activity), false), if (Perms.dndAccess(activity)) null else "Ouvrir") { Perms.openDndAccess(activity) }
+            StatusRow("Accès aux notifications", "Pour « lis mes notifications ». Gardées en mémoire uniquement ; banques et codes ignorés.",
+                st(Perms.notificationAccess(activity), false), if (Perms.notificationAccess(activity)) "Gérer" else "Activer") { Perms.openNotificationAccess(activity) }
+        }
+        Section("Fiabilité") {
             StatusRow("Alarmes exactes", "Rappels et routines à la minute près (sinon Android peut les décaler).",
                 st(Perms.exactAlarms(activity)), if (Perms.exactAlarms(activity)) null else "Ouvrir") { Perms.openExactAlarmSettings(activity) }
             StatusRow("Batterie sans restriction", "Évite que l'écoute du mot « Jarvis » soit coupée.",
                 st(Perms.batteryUnrestricted(activity)), if (Perms.batteryUnrestricted(activity)) null else "Ouvrir") { Perms.requestBatteryUnrestricted(activity) }
-        }
-        Section("Facultatives") {
-            StatusRow("Contacts", "Trouver le numéro pour « appelle Paul ». Lecture seule, rien n'est envoyé.",
-                st(Perms.contacts(activity), false), if (Perms.contacts(activity)) null else "Autoriser") { req.launch(Manifest.permission.READ_CONTACTS) }
-            StatusRow("Accès aux notifications", "Pour « lis mes notifications ». Gardées en mémoire uniquement ; banques et codes ignorés.",
-                st(Perms.notificationAccess(activity), false), if (Perms.notificationAccess(activity)) "Gérer" else "Activer") { Perms.openNotificationAccess(activity) }
             StatusRow("Assistant par défaut", "Appui long sur Accueil pour parler à Jarvis.", Status.OFF, "Choisir") { Perms.openDefaultAssistant(activity) }
             if (Build.VERSION.SDK_INT >= 33) {
                 StatusRow("Tuile Réglages rapides", "Un bouton Jarvis dans le volet de notifications.", Status.OFF, "Ajouter") { addTile(activity) }
@@ -75,9 +113,9 @@ fun PermissionsScreen(activity: MainActivity, app: JarvisApp, onBack: () -> Unit
                 StatusRow("Tuile Réglages rapides", "Déroulez le volet, touchez le crayon et ajoutez « Jarvis ».", Status.OFF)
             }
         }
-        Section("Non utilisé volontairement") {
-            Hint("Service d'accessibilité : Jarvis n'en a pas besoin et ne le demande pas. Il ne lit pas le contenu de vos écrans, " +
-                "ne clique pas à votre place et ne peut pas contourner un code, une empreinte ou une validation bancaire.")
+        Section("Limites qui restent") {
+            Hint("Même avec toutes les autorisations, Jarvis ne fait ni paiement, ni achat, ni suppression de données, et ne contourne " +
+                "aucun code, empreinte ou validation bancaire. Les appels et SMS attendent toujours votre « oui ».")
         }
     }
 }
@@ -127,6 +165,7 @@ fun DiagnosticsScreen(activity: MainActivity, app: JarvisApp, onBack: () -> Unit
         }
         Section("Interface et actions") {
             StatusRow("Bulle flottante", if (Perms.overlay(ctx)) "Autorisée" else "Autorisation requise", if (Perms.overlay(ctx)) Status.OK else Status.NEEDED)
+            StatusRow("Service d'accessibilité", if (Perms.accessibility(ctx)) "Actif : gestes et lecture d'écran" else "Désactivé (facultatif)", if (Perms.accessibility(ctx)) Status.OK else Status.OFF)
             StatusRow("Notifications", if (Perms.notifications(ctx)) "Autorisées" else "Refusées", if (Perms.notifications(ctx)) Status.OK else Status.NEEDED)
             StatusRow("Alarmes exactes", if (Perms.exactAlarms(ctx)) "Autorisées" else "Rappels possiblement décalés", if (Perms.exactAlarms(ctx)) Status.OK else Status.NEEDED)
             val clock = Intent(AlarmClock.ACTION_SET_TIMER).resolveActivity(pm) != null

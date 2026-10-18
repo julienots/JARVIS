@@ -31,6 +31,8 @@ data class JarvisSettings(
     val maxFollowUps: Int = 4,
     val overlayEnabled: Boolean = true,
     val overlayAutoHideSeconds: Int = 7,
+    /** La sphère reste par-dessus les autres applications, prête à être touchée. */
+    val overlayAlwaysOn: Boolean = false,
     val ttsRate: Float = 1.0f,
     val ttsPitch: Float = 0.95f,
     val ttsVoice: String = "",
@@ -122,6 +124,7 @@ class SettingsRepository(context: Context, private val secrets: SecureKeyStore) 
             maxFollowUps = prefs.getInt("maxFollowUps", d.maxFollowUps),
             overlayEnabled = prefs.getBoolean("overlayEnabled", d.overlayEnabled),
             overlayAutoHideSeconds = prefs.getInt("overlayAutoHideSeconds", d.overlayAutoHideSeconds),
+            overlayAlwaysOn = prefs.getBoolean("overlayAlwaysOn", d.overlayAlwaysOn),
             ttsRate = prefs.getFloat("ttsRate", d.ttsRate),
             ttsPitch = prefs.getFloat("ttsPitch", d.ttsPitch),
             ttsVoice = prefs.getString("ttsVoice", d.ttsVoice) ?: "",
@@ -151,6 +154,7 @@ class SettingsRepository(context: Context, private val secrets: SecureKeyStore) 
             .putInt("maxFollowUps", s.maxFollowUps)
             .putBoolean("overlayEnabled", s.overlayEnabled)
             .putInt("overlayAutoHideSeconds", s.overlayAutoHideSeconds)
+            .putBoolean("overlayAlwaysOn", s.overlayAlwaysOn)
             .putFloat("ttsRate", s.ttsRate)
             .putFloat("ttsPitch", s.ttsPitch)
             .putString("ttsVoice", s.ttsVoice)

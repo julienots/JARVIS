@@ -28,6 +28,29 @@ class IntentParser(private val wakeWords: List<String> = listOf("jarvis")) {
         if (n.matches(Regex("(resume|resumer|fais (moi )?un resume)( ce que| de ce que)? (je (viens|t ai)|j ai) .*|resume (la|notre) conversation.*"))) return JarvisIntent.Summary
         if (n.matches(Regex("(aide|aide moi|que sais tu faire|qu est ce que tu sais faire|quelles sont tes commandes|tu sais faire quoi).*"))) return JarvisIntent.Help
 
+        // --- Gestes système et écran (service d'accessibilité) ---
+        systemAction(n)?.let { return it }
+        Regex("(lis|lit|lire|resume|resumer)( moi)? (l ecran|ce qu il y a (a|sur) l ecran|cette page|la page|ce que je (lis|regarde)|ce qui est affiche)").matchEntire(n)?.let {
+            return JarvisIntent.ReadScreen(summarize = it.groupValues[1].startsWith("resum"))
+        }
+        if (n.matches(Regex("(qu est ce qu il y a|qu y a t il|il y a quoi) (sur|a) (l|mon) ecran.*|de quoi parle (cette page|l ecran|la page).*"))) return JarvisIntent.ReadScreen(summarize = true)
+
+        // --- Agenda ---
+        if (n.matches(Regex(".*(mon agenda|mon calendrier|mes rendez vous|mes evenements|mon planning|qu est ce que j ai (de prevu|aujourd hui|demain)|j ai quoi (de prevu|aujourd hui|demain)|ai je (des|un) rendez vous).*"))) {
+            return JarvisIntent.Agenda(if (n.contains("demain")) 1 else 0)
+        }
+
+        // --- Recherche dans le téléphone (sans changer d'application) ---
+        Regex("(cherche|recherche|trouve)( moi)? (.+?) (sur|dans) (mon|le|ce) (telephone|tel|portable|mobile)").matchEntire(n)?.let {
+            return JarvisIntent.PhoneSearch(it.groupValues[3].trim())
+        }
+        Regex("(cherche|recherche|trouve)( moi)? (.+?) dans (mes|les) (contacts|fichiers|documents|photos|images|videos|applis|applications|telechargements|musiques)").matchEntire(n)?.let {
+            return JarvisIntent.PhoneSearch(it.groupValues[3].trim())
+        }
+        Regex("(cherche|recherche|trouve)( moi)? (le |la |les |un |une |mon |ma |mes )?(contact|fichier|document|photo|application|appli|video|musique)s? (de |du |nomme |nommee |appele |appelee )?(.+)").matchEntire(n)?.let {
+            return JarvisIntent.PhoneSearch(it.groupValues[6].trim())
+        }
+
         // --- Heure, date, batterie ---
         if (n.matches(Regex(".*(quelle heure|l heure qu il est|donne (moi )?l heure|il est quelle heure|heure est il).*"))) return JarvisIntent.Time
         if (n.matches(Regex(".*(quel jour|quelle date|on est le combien|date d aujourd hui|la date).*"))) return JarvisIntent.Date
@@ -86,6 +109,12 @@ class IntentParser(private val wakeWords: List<String> = listOf("jarvis")) {
             }
         }
         if (n.matches(Regex("(mets|joue|lance) (de la |la |une )?musique"))) return JarvisIntent.Media(MediaCommand.PLAY)
+
+        // --- Luminosité, ne pas déranger ---
+        if (n.contains("luminosite") || n.matches(Regex(".*(ecran plus|ecran moins) (clair|lumineux|sombre).*"))) brightness(n)?.let { return it }
+        if (n.matches(Regex(".*\\b(ne pas deranger|mode silence total|mode concentration)\\b.*"))) {
+            return JarvisIntent.DoNotDisturb(!n.matches(Regex(".*(desactive|enleve|coupe|arrete|quitte|sors|retire).*")))
+        }
 
         // --- Réglages ---
         settings(n)?.let { return it }
@@ -262,6 +291,33 @@ class IntentParser(private val wakeWords: List<String> = listOf("jarvis")) {
             }
         }
         return null
+    }
+
+    private fun systemAction(n: String): JarvisIntent.System? {
+        val a = when {
+            n.matches(Regex("(retour|retour en arriere|reviens en arriere|fais retour|appuie sur retour|page precedente)")) -> SystemAction.BACK
+            n.matches(Regex("(accueil|ecran d accueil|(va|retourne|reviens|retour) (a|sur) l (accueil|ecran d accueil)|appuie sur accueil)")) -> SystemAction.HOME
+            n.matches(Regex("((affiche|montre|ouvre) )?(les )?(applis|applications) recentes|multitache|(affiche|ouvre) le multitache")) -> SystemAction.RECENTS
+            n.matches(Regex("(ouvre|affiche|descends|baisse|montre) (le volet( des| de)? notifications|le volet|les notifications|le centre de notifications)")) -> SystemAction.NOTIFICATIONS
+            n.matches(Regex("((ouvre|affiche|montre) )?(les )?(reglages|parametres) rapides")) -> SystemAction.QUICK_SETTINGS
+            n.matches(Regex("((fais|prends|fait) (une |un )?)?(capture( d ecran)?|screenshot|copie d ecran)")) -> SystemAction.SCREENSHOT
+            n.matches(Regex("(verrouille|bloque) (le telephone|l ecran|mon telephone|le tel)|eteins l ecran|mets l ecran en veille")) -> SystemAction.LOCK_SCREEN
+            else -> return null
+        }
+        return JarvisIntent.System(a)
+    }
+
+    private fun brightness(n: String): JarvisIntent.Brightness? {
+        val pct = Regex("(\\d{1,3}) ?(pour ?cent|%|pourcent)").find(n)?.groupValues?.get(1)?.toIntOrNull()
+            ?: Regex("\\ba (\\d{1,3})\\b").find(n)?.groupValues?.get(1)?.toIntOrNull()
+        return when {
+            n.matches(Regex(".*(au max|au maximum|a fond|maximum|maximale).*")) -> JarvisIntent.Brightness(BrightnessCommand.MAX)
+            n.matches(Regex(".*(au minimum|au min|minimale|minimum).*")) -> JarvisIntent.Brightness(BrightnessCommand.MIN)
+            pct != null && pct in 0..100 -> JarvisIntent.Brightness(BrightnessCommand.SET, pct)
+            n.matches(Regex(".*(monte|augmente|plus fort|hausse|plus clair|plus lumineux|leve).*")) -> JarvisIntent.Brightness(BrightnessCommand.UP)
+            n.matches(Regex(".*(baisse|diminue|reduis|moins fort|plus sombre|moins clair|moins lumineux).*")) -> JarvisIntent.Brightness(BrightnessCommand.DOWN)
+            else -> null
+        }
     }
 
     private fun volume(n: String, t: List<String>): JarvisIntent? {

@@ -34,8 +34,9 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * La sphère Jarvis en 3D (OpenGL). En cas d'échec OpenGL, une version 2D animée prend le relais.
- * [onTop] : vrai dans l'interface flottante (la surface doit passer au-dessus de la fenêtre).
+ * La sphère Jarvis en 3D (OpenGL), sans fond : seule la sphère animée est visible.
+ * En cas d'échec OpenGL, une version 2D animée prend le relais.
+ * [onDragBy] / [onLongPress] : bulle flottante (le glissé déplace la fenêtre, l'appui long la ferme).
  */
 @Composable
 fun JarvisSphere(
@@ -44,7 +45,9 @@ fun JarvisSphere(
     style: SphereStyle,
     lowPower: Boolean,
     modifier: Modifier = Modifier,
-    onTop: Boolean = false,
+    onDragBy: ((Float, Float) -> Unit)? = null,
+    onDragEnd: (() -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null,
     onTap: () -> Unit = {},
 ) {
     var glFailed by remember { mutableStateOf(false) }
@@ -71,13 +74,16 @@ fun JarvisSphere(
     Box(modifier.semantics { contentDescription = description }) {
         AndroidView(
             factory = { ctx ->
-                JarvisSphereView(ctx, lowPower, onTop).also { v ->
+                JarvisSphereView(ctx, lowPower).also { v ->
                     v.onGlFailure = { glFailed = true }
                     viewRef = v
                 }
             },
             update = { v ->
                 v.onTap = onTap
+                v.onDragBy = onDragBy
+                v.onDragEnd = onDragEnd
+                v.onLongPress = onLongPress
                 v.update(state, level, style)
             },
         )

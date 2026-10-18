@@ -20,7 +20,7 @@ object ActionPolicy {
         is JarvisIntent.Call -> "Voulez-vous vraiment appeler ${intent.contact} ? Répondez oui ou non."
         is JarvisIntent.SendMessage ->
             if (intent.message.isBlank()) "Je prépare un message pour ${intent.contact}. Je l'ouvre dans votre messagerie, d'accord ?"
-            else "Je prépare le message « ${intent.message} » pour ${intent.contact}. Vous devrez appuyer sur Envoyer vous-même. On y va ?"
+            else "J'envoie le message « ${intent.message} » à ${intent.contact} ? Répondez oui ou non."
         is JarvisIntent.ClearTasks -> "Voulez-vous vraiment effacer toute votre liste de tâches ? Répondez oui ou non."
         else -> "Confirmez-vous ? Répondez oui ou non."
     }

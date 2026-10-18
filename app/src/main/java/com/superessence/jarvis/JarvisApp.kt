@@ -66,8 +66,8 @@ class JarvisApp : Application() {
             },
         )
         Notifications.createChannels(this)
-        overlay = OverlayController(this)
         session = SessionController(this)
+        overlay = OverlayController(this)
         scheduler.rescheduleAll()
     }
 

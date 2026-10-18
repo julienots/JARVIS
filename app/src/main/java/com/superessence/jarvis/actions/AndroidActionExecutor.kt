@@ -1,6 +1,13 @@
 package com.superessence.jarvis.actions
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.app.NotificationManager
+import android.content.ContentUris
+import android.location.Location
+import android.location.LocationManager
+import android.provider.CalendarContract
+import android.telephony.SmsManager
 import android.app.SearchManager
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -25,17 +32,22 @@ import com.superessence.jarvis.core.brain.ActionResult
 import com.superessence.jarvis.core.info.OpenMeteo
 import com.superessence.jarvis.core.info.Wikipedia
 import com.superessence.jarvis.core.info.firstSentences
+import com.superessence.jarvis.core.intent.BrightnessCommand
 import com.superessence.jarvis.core.intent.JarvisIntent
+import com.superessence.jarvis.core.intent.SystemAction
 import com.superessence.jarvis.core.intent.MediaCommand
 import com.superessence.jarvis.core.intent.SettingsTarget
 import com.superessence.jarvis.core.intent.VolumeCommand
 import com.superessence.jarvis.core.panel.PanelCard
+import com.superessence.jarvis.core.panel.ResultItem
 import com.superessence.jarvis.core.text.Text
 import com.superessence.jarvis.data.ReminderItem
+import com.superessence.jarvis.service.JarvisAccessibilityService
 import com.superessence.jarvis.service.JarvisNotificationListener
 import com.superessence.jarvis.service.Notifications
 import com.superessence.jarvis.ui.MainActivity
 import com.superessence.jarvis.util.AppVisibility
+import com.superessence.jarvis.util.Perms
 import java.net.URLEncoder
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -44,7 +56,9 @@ import kotlin.math.roundToInt
 
 /**
  * Exécute les intentions avec les API Android officielles et rapporte honnêtement le résultat.
- * Aucune action ne simule de geste à l'écran ; les envois et appels sont préparés, jamais déclenchés seuls.
+ * Les recherches, l'agenda, la luminosité ou la lecture d'écran se font en arrière-plan : l'application
+ * en cours reste à l'écran et le résultat s'affiche dans le mini-écran flottant.
+ * Les appels et SMS ne partent qu'après votre « oui » (et directement si vous l'avez autorisé).
  */
 class AndroidActionExecutor(private val app: JarvisApp) : ActionExecutor {
 
@@ -83,6 +97,12 @@ class AndroidActionExecutor(private val app: JarvisApp) : ActionExecutor {
         is JarvisIntent.SendMessage -> message(intent.contact, intent.message)
         is JarvisIntent.Navigate -> navigate(intent.destination)
         JarvisIntent.ReadNotifications -> readNotifications()
+        is JarvisIntent.PhoneSearch -> phoneSearch(intent.query)
+        is JarvisIntent.Agenda -> agenda(intent.dayOffset)
+        is JarvisIntent.Brightness -> brightness(intent.command, intent.percent)
+        is JarvisIntent.DoNotDisturb -> doNotDisturb(intent.on)
+        is JarvisIntent.System -> systemAction(intent.action)
+        is JarvisIntent.ReadScreen -> readScreen(intent.summarize)
         else -> ActionResult(false, "Je ne sais pas encore faire cela sur ce téléphone.")
     }
 
@@ -341,11 +361,14 @@ class AndroidActionExecutor(private val app: JarvisApp) : ActionExecutor {
     private fun weather(cityArg: String?): ActionResult {
         if (offline()) return ActionResult(false, "Mode privé actif : je ne consulte pas Internet.")
         val city = cityArg?.takeIf { it.isNotBlank() } ?: app.settings.current.defaultCity
-        if (city.isBlank()) return ActionResult(false, "Pour quelle ville ? Dites par exemple « météo à Paris », ou choisissez une ville par défaut dans les réglages.")
+        val here = if (city.isBlank()) lastLocation() else null
+        if (city.isBlank() && here == null) return ActionResult(false, "Pour quelle ville ? Dites par exemple « météo à Paris », choisissez une ville par défaut dans les réglages, ou autorisez la localisation.")
         return try {
-            val geo = app.http.get(OpenMeteo.geocodeUrl(city))
-            val place = (if (geo.code == 200) OpenMeteo.parsePlace(geo.body) else null)
-                ?: return ActionResult(false, "Je ne trouve pas la ville $city.")
+            val place = if (here != null) OpenMeteo.Place("votre position", here.latitude, here.longitude) else {
+                val geo = app.http.get(OpenMeteo.geocodeUrl(city))
+                (if (geo.code == 200) OpenMeteo.parsePlace(geo.body) else null)
+                    ?: return ActionResult(false, "Je ne trouve pas la ville $city.")
+            }
             val f = app.http.get(OpenMeteo.forecastUrl(place.lat, place.lon))
             if (f.code != 200) return ActionResult(false, "Le service météo ne répond pas pour le moment.")
             val fc = OpenMeteo.parseForecast(f.body)
@@ -367,6 +390,9 @@ class AndroidActionExecutor(private val app: JarvisApp) : ActionExecutor {
             if (summary != null) {
                 ActionResult(true, "D'après Wikipédia : " + firstSentences(summary.extract),
                     listOf(PanelCard.Info(summary.title, firstSentences(summary.extract, 4), summary.url, lifetimeMs = 25_000)))
+            } else if (app.ai.hasUsableProvider()) {
+                // Pas de fiche Wikipédia : l'IA répond, sans ouvrir de navigateur par-dessus votre application.
+                ActionResult(true, "", aiFollowUp = query)
             } else openWebSearch(query)
         } catch (e: Exception) {
             ActionResult(false, "Recherche impossible : pas de connexion Internet.")
@@ -425,6 +451,13 @@ class AndroidActionExecutor(private val app: JarvisApp) : ActionExecutor {
         val found = lookupNumber(contact)
         val uri = Uri.parse("tel:" + (found?.second ?: ""))
         val who = found?.first ?: contact
+        if (found != null && Perms.callPhone(ctx)) {
+            when (start(Intent(Intent.ACTION_CALL, uri), "Appel")) {
+                Launch.OK -> return ActionResult(true, "J'appelle $who.")
+                Launch.BLOCKED -> return ActionResult(false, blockedText("le téléphone"))
+                Launch.NO_APP -> {}
+            }
+        }
         return when (start(Intent(Intent.ACTION_DIAL, uri), "Appel")) {
             Launch.OK -> if (found != null) ActionResult(true, "Le numéro de $who est prêt. Appuyez sur le bouton d'appel pour lancer l'appel.")
             else ActionResult(true, "J'ouvre le téléphone. Je n'ai pas trouvé $contact dans vos contacts${if (!hasContacts()) " car l'accès aux contacts n'est pas autorisé" else ""}.")
@@ -435,6 +468,14 @@ class AndroidActionExecutor(private val app: JarvisApp) : ActionExecutor {
 
     private fun message(contact: String, body: String): ActionResult {
         val found = lookupNumber(contact)
+        if (found != null && body.isNotBlank() && Perms.sendSms(ctx)) {
+            try {
+                @Suppress("DEPRECATION")
+                val sms = if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(SmsManager::class.java) else SmsManager.getDefault()
+                sms.sendMultipartTextMessage(found.second, null, sms.divideMessage(body), null, null)
+                return ActionResult(true, "Message envoyé à ${found.first}.", listOf(PanelCard.Info("SMS envoyé · ${found.first}", body, lifetimeMs = 8_000)))
+            } catch (_: Exception) { /* repli : la messagerie s'ouvre avec le message prêt */ }
+        }
         val i = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + (found?.second ?: ""))).putExtra("sms_body", body)
         return when (start(i, "Message")) {
             Launch.OK -> ActionResult(true, "Le message est prêt${if (found != null) " pour ${found.first}" else ""}. Vérifiez-le, puis appuyez sur Envoyer.")
@@ -455,6 +496,167 @@ class AndroidActionExecutor(private val app: JarvisApp) : ActionExecutor {
         val speech = "Vous avez ${list.size} notification${if (list.size > 1) "s" else ""}. " +
             list.take(4).joinToString(" ") { "${it.app} : ${it.title}${if (it.text.isNotBlank()) ", ${it.text.take(80)}" else ""}." }
         return ActionResult(true, speech, listOf(PanelCard.Info("Notifications", list.take(6).joinToString("\n") { "${it.app} · ${it.title}" })))
+    }
+
+    // ---------- Téléphone : recherche, agenda, système (sans quitter l'application en cours) ----------
+
+    @SuppressLint("MissingPermission")
+    private fun lastLocation(): Location? {
+        if (!Perms.location(ctx)) return null
+        val lm = ctx.getSystemService(LocationManager::class.java) ?: return null
+        return try { lm.getProviders(true).mapNotNull { lm.getLastKnownLocation(it) }.maxByOrNull { it.time } } catch (_: Exception) { null }
+    }
+
+    private fun phoneSearch(query: String): ActionResult {
+        val q = query.trim()
+        if (q.isBlank()) return ActionResult(false, "Que voulez-vous que je cherche dans le téléphone ?")
+        val nq = Text.normalize(q)
+        val apps = launcher.apps().filter { it.normalized.contains(nq) || Text.similarity(it.normalized, nq) >= 0.8 }.take(4)
+            .map { ResultItem(it.label, "Application", "app:${it.packageName}") }
+        val contacts = if (Perms.contacts(ctx)) searchContacts(q) else emptyList()
+        val files = if (Perms.media(ctx)) searchFiles(q) else emptyList()
+        val events = if (Perms.calendar(ctx)) searchEvents(q) else emptyList()
+        val all = apps + contacts + files + events
+        val missing = listOfNotNull(
+            "contacts".takeIf { !Perms.contacts(ctx) }, "fichiers".takeIf { !Perms.media(ctx) }, "agenda".takeIf { !Perms.calendar(ctx) },
+        )
+        val note = if (missing.isEmpty()) "" else " Pour chercher aussi dans vos ${missing.joinToString(", ")}, autorisez-les dans Jarvis, Réglages, Autorisations."
+        if (all.isEmpty()) return ActionResult(false, "Je n'ai rien trouvé pour « $q » dans le téléphone.$note")
+        val parts = listOfNotNull(
+            plural(apps.size, "application"), plural(contacts.size, "contact"), plural(files.size, "fichier"), plural(events.size, "événement"),
+        )
+        return ActionResult(true, "Pour « $q », j'ai trouvé ${parts.joinToString(", ")}. Touchez un résultat pour l'ouvrir.$note",
+            listOf(PanelCard.Results("Dans le téléphone · $q", all)))
+    }
+
+    private fun plural(n: Int, word: String) = if (n == 0) null else "$n $word${if (n > 1) "s" else ""}"
+
+    private fun searchContacts(q: String): List<ResultItem> = try {
+        val uri = Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_FILTER_URI, Uri.encode(q))
+        ctx.contentResolver.query(uri, arrayOf(ContactsContract.Contacts._ID, ContactsContract.Contacts.LOOKUP_KEY,
+            ContactsContract.Contacts.DISPLAY_NAME_PRIMARY), null, null, null)?.use { c ->
+            buildList {
+                while (c.moveToNext() && size < 5) {
+                    val lookup = ContactsContract.Contacts.getLookupUri(c.getLong(0), c.getString(1))
+                    add(ResultItem(c.getString(2) ?: "Contact", "Contact", lookup?.toString()))
+                }
+            }
+        } ?: emptyList()
+    } catch (_: Exception) { emptyList() }
+
+    private fun searchFiles(q: String): List<ResultItem> = try {
+        val files = MediaStore.Files.getContentUri("external")
+        val type = MediaStore.Files.FileColumns.MEDIA_TYPE
+        ctx.contentResolver.query(files, arrayOf(MediaStore.Files.FileColumns._ID, MediaStore.Files.FileColumns.DISPLAY_NAME, type),
+            "${MediaStore.Files.FileColumns.DISPLAY_NAME} LIKE ?", arrayOf("%$q%"),
+            "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC")?.use { c ->
+            buildList {
+                while (c.moveToNext() && size < 6) {
+                    val id = c.getLong(0)
+                    val (base, kind) = when (c.getInt(2)) {
+                        MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI to "Photo"
+                        MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI to "Vidéo"
+                        MediaStore.Files.FileColumns.MEDIA_TYPE_AUDIO -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI to "Audio"
+                        else -> files to "Fichier"
+                    }
+                    add(ResultItem(c.getString(1) ?: kind, kind, ContentUris.withAppendedId(base, id).toString()))
+                }
+            }
+        } ?: emptyList()
+    } catch (_: Exception) { emptyList() }
+
+    private fun searchEvents(q: String): List<ResultItem> {
+        val now = System.currentTimeMillis()
+        return queryInstances(now - 86_400_000L, now + 90 * 86_400_000L, "${CalendarContract.Instances.TITLE} LIKE ?", arrayOf("%$q%"))
+            .take(4).map { it.copy(detail = "Agenda · " + it.detail) }
+    }
+
+    private val dayFormat = DateTimeFormatter.ofPattern("EEE d MMM 'à' HH:mm", java.util.Locale.FRENCH)
+
+    private fun queryInstances(begin: Long, end: Long, selection: String?, args: Array<String>?): List<ResultItem> = try {
+        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().also {
+            ContentUris.appendId(it, begin); ContentUris.appendId(it, end)
+        }.build()
+        ctx.contentResolver.query(uri, arrayOf(CalendarContract.Instances.EVENT_ID, CalendarContract.Instances.TITLE,
+            CalendarContract.Instances.BEGIN, CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.EVENT_LOCATION),
+            selection, args, "${CalendarContract.Instances.BEGIN} ASC")?.use { c ->
+            buildList {
+                while (c.moveToNext() && size < 12) {
+                    val at = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(c.getLong(2)), ZoneId.systemDefault())
+                    val whenTxt = if (c.getInt(3) == 1) "Toute la journée" else at.format(dayFormat)
+                    val place = c.getString(4)?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""
+                    add(ResultItem(c.getString(1) ?: "Événement", whenTxt + place,
+                        ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, c.getLong(0)).toString()))
+                }
+            }
+        } ?: emptyList()
+    } catch (_: Exception) { emptyList() }
+
+    private fun agenda(dayOffset: Int): ActionResult {
+        val label = if (dayOffset == 1) "demain" else "aujourd'hui"
+        if (!Perms.calendar(ctx)) return ActionResult(false, "Pour lire votre agenda, autorisez l'accès au calendrier dans Jarvis, Réglages, Autorisations.")
+        val day = java.time.LocalDate.now().plusDays(dayOffset.toLong())
+        val zone = ZoneId.systemDefault()
+        val events = queryInstances(day.atStartOfDay(zone).toInstant().toEpochMilli(), day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(), null, null)
+        if (events.isEmpty()) return ActionResult(true, "Rien de prévu $label dans votre agenda.")
+        val speech = "Vous avez ${events.size} événement${if (events.size > 1) "s" else ""} $label : " +
+            events.take(4).joinToString(", ") { e -> e.label + (e.detail.substringAfter("à ", "").substringBefore(" ·").takeIf { it.isNotBlank() }?.let { " à $it" } ?: "") } + "."
+        return ActionResult(true, speech, listOf(PanelCard.Results("Agenda · $label", events)))
+    }
+
+    private fun brightness(cmd: BrightnessCommand, percent: Int?): ActionResult {
+        if (!Perms.writeSettings(ctx)) {
+            return ActionResult(false, "Pour régler la luminosité, autorisez « Modifier les paramètres système » dans Jarvis, Réglages, Autorisations.")
+        }
+        val cr = ctx.contentResolver
+        val cur = Settings.System.getInt(cr, Settings.System.SCREEN_BRIGHTNESS, 128)
+        val target = when (cmd) {
+            BrightnessCommand.UP -> cur + 51
+            BrightnessCommand.DOWN -> cur - 51
+            BrightnessCommand.MAX -> 255
+            BrightnessCommand.MIN -> 5
+            BrightnessCommand.SET -> ((percent ?: 50) / 100f * 255).roundToInt()
+        }.coerceIn(5, 255)
+        return try {
+            Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+            Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS, target)
+            ActionResult(true, "Luminosité à ${(target * 100f / 255).roundToInt()} %.")
+        } catch (_: Exception) {
+            ActionResult(false, "Android a refusé de changer la luminosité.")
+        }
+    }
+
+    private fun doNotDisturb(on: Boolean): ActionResult {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        if (!nm.isNotificationPolicyAccessGranted) {
+            return ActionResult(false, "Pour gérer le mode Ne pas déranger, autorisez l'accès « Ne pas déranger » dans Jarvis, Réglages, Autorisations.")
+        }
+        nm.setInterruptionFilter(if (on) NotificationManager.INTERRUPTION_FILTER_PRIORITY else NotificationManager.INTERRUPTION_FILTER_ALL)
+        return ActionResult(true, if (on) "Mode Ne pas déranger activé." else "Mode Ne pas déranger désactivé.")
+    }
+
+    private fun accessibilityMissing() = ActionResult(false,
+        "Pour cela, activez le service d'accessibilité de Jarvis : Jarvis, Réglages, Autorisations, Accessibilité.")
+
+    private fun systemAction(action: SystemAction): ActionResult {
+        val svc = JarvisAccessibilityService.instance ?: return accessibilityMissing()
+        return if (svc.perform(action)) ActionResult(true, when (action) {
+            SystemAction.SCREENSHOT -> "Capture d'écran faite."
+            SystemAction.LOCK_SCREEN -> "Écran verrouillé."
+            else -> ""
+        }) else ActionResult(false, "${action.label} : impossible sur cette version d'Android.")
+    }
+
+    private fun readScreen(summarize: Boolean): ActionResult {
+        val svc = JarvisAccessibilityService.instance ?: return accessibilityMissing()
+        val screen = svc.readScreen() ?: return ActionResult(false, "Je n'arrive pas à lire l'écran pour le moment.")
+        if (screen.text.isBlank()) return ActionResult(false, "Je ne vois pas de texte sur l'écran de ${screen.app}.")
+        val card = PanelCard.Info("À l'écran · ${screen.app}", screen.text.take(700), lifetimeMs = 30_000)
+        if (!summarize) return ActionResult(true, "Sur ${screen.app} : " + screen.text.replace('\n', ' ').take(500), listOf(card))
+        if (offline()) return ActionResult(true, "Mode privé : je ne l'envoie pas à l'IA. Voici le début : " + screen.text.replace('\n', ' ').take(300), listOf(card))
+        return ActionResult(true, "Voici le début : " + screen.text.replace('\n', ' ').take(300), listOf(card),
+            aiFollowUp = "Voici le texte affiché à l'écran de mon téléphone, dans l'application ${screen.app}. " +
+                "Résume-le en deux ou trois phrases, en français, sans balise ACTION :\n\n${screen.text}")
     }
 
     companion object {

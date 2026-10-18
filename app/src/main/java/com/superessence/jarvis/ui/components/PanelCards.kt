@@ -1,5 +1,6 @@
 package com.superessence.jarvis.ui.components
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -103,6 +104,17 @@ fun PanelCardView(active: ActiveCard, onClose: () -> Unit, onPin: () -> Unit, mo
                 }
             }
             is PanelCard.Confirm -> Text(card.question, color = JColors.Gold, fontSize = 15.sp)
+            is PanelCard.Results -> {
+                val ctx = LocalContext.current
+                card.items.take(12).forEach { item ->
+                    val uri = item.openUri
+                    Column(Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                        .then(if (uri != null) Modifier.clickableNoRipple { openResult(ctx, uri) } else Modifier)) {
+                        Text(item.label, color = if (uri != null) JColors.Cyan else JColors.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (item.detail.isNotBlank()) Text(item.detail, color = JColors.TextDim, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
         }
     }
 }
@@ -114,6 +126,15 @@ private fun title(c: PanelCard) = when (c) {
     is PanelCard.Tasks -> c.title
     is PanelCard.Info -> c.title
     is PanelCard.Confirm -> "Confirmation requise"
+    is PanelCard.Results -> c.title
+}
+
+/** Ouvre un résultat touché par l'utilisateur : application (« app:paquet ») ou lien / contenu. */
+private fun openResult(ctx: Context, uri: String) {
+    val intent = if (uri.startsWith("app:")) ctx.packageManager.getLaunchIntentForPackage(uri.removePrefix("app:"))
+    else Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    intent ?: return
+    runCatching { ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }
 
 @Composable

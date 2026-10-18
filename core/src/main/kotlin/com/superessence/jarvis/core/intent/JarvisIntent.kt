@@ -10,6 +10,13 @@ enum class SettingsTarget(val label: String) {
 
 enum class MediaCommand { PLAY_PAUSE, PLAY, PAUSE, NEXT, PREVIOUS }
 enum class VolumeCommand { UP, DOWN, MUTE, SET, MAX }
+enum class BrightnessCommand { UP, DOWN, SET, MAX, MIN }
+
+/** Gestes système réalisés par le service d'accessibilité de Jarvis. */
+enum class SystemAction(val label: String) {
+    BACK("Retour"), HOME("Accueil"), RECENTS("Applications récentes"), NOTIFICATIONS("Volet des notifications"),
+    QUICK_SETTINGS("Réglages rapides"), SCREENSHOT("Capture d'écran"), LOCK_SCREEN("Verrouillage de l'écran"),
+}
 
 /** Intention reconnue dans une phrase de l'utilisateur. */
 sealed class JarvisIntent {
@@ -41,6 +48,15 @@ sealed class JarvisIntent {
     data class Navigate(val destination: String) : JarvisIntent() { override val id = "navigate" }
     data class PlayMusic(val query: String) : JarvisIntent() { override val id = "play_music" }
     data object ReadNotifications : JarvisIntent() { override val id = "read_notifications" }
+    /** Recherche dans le téléphone (applications, contacts, fichiers, agenda) sans quitter l'application en cours. */
+    data class PhoneSearch(val query: String) : JarvisIntent() { override val id = "phone_search" }
+    /** Événements de l'agenda : 0 = aujourd'hui, 1 = demain. */
+    data class Agenda(val dayOffset: Int) : JarvisIntent() { override val id = "agenda" }
+    data class Brightness(val command: BrightnessCommand, val percent: Int? = null) : JarvisIntent() { override val id = "brightness" }
+    data class DoNotDisturb(val on: Boolean) : JarvisIntent() { override val id = "dnd" }
+    data class System(val action: SystemAction) : JarvisIntent() { override val id = "system" }
+    /** Lit le texte affiché à l'écran ; [summarize] le fait résumer par l'IA. */
+    data class ReadScreen(val summarize: Boolean) : JarvisIntent() { override val id = "read_screen" }
     data object Summary : JarvisIntent() { override val id = "summary" }
     data class RunRoutine(val name: String) : JarvisIntent() { override val id = "run_routine" }
     data object ClosePanel : JarvisIntent() { override val id = "close_panel" }
